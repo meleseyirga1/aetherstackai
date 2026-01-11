@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { NodeSSH } from 'node-ssh';
 
-// ALIGNED TO STRIPE VERSION: 2025-12-15.clover
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 export async function POST(req) {
@@ -10,15 +9,11 @@ export async function POST(req) {
   const sig = req.headers.get('stripe-signature');
 
   try {
-    const event = stripe.webhooks.constructEvent(
-      body, 
-      sig, 
-      process.env.STRIPE_WEBHOOK_SECRET
-    );
+    const event = stripe.webhooks.constructEvent(body, sig, process.env.STRIPE_WEBHOOK_SECRET);
 
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object;
-      const credits = (session.amount_total / 100) * 100; // $1 = 100 IU
+      const credits = (session.amount_total / 100) * 100;
 
       const ssh = new NodeSSH();
       await ssh.connect({
@@ -29,15 +24,10 @@ export async function POST(req) {
 
       // Synchronize credits to the physical VPS ledger
       await ssh.execCommand(`python3 /opt/aetherstack/scripts/economy_sync.py ${credits}`);
-      
-      // Log the event in the Supreme Truth
-      await ssh.execCommand(`python3 -c "from audit_engine import AuditEngine; AuditEngine().log_action('STRIPE_ENGINE', 'PRODUCTION_DEPOSIT', 'Verified ${credits} IU') "`);
-      
       ssh.dispose();
     }
     return NextResponse.json({ received: true });
   } catch (err) {
-    console.error('💰 STRIPE_ERROR:', err.message);
     return NextResponse.json({ error: err.message }, { status: 400 });
   }
 }
