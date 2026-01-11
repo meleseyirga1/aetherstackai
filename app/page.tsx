@@ -1,79 +1,95 @@
 "use client"
 import { useEffect, useState } from 'react';
 import { useSovereignVoice } from '../hooks/useSovereignVoice';
-import { BookOpen, TrendingUp, Search } from 'lucide-react';
+import { BookOpen, TrendingUp, Search, ShieldCheck } from 'lucide-react';
 
 export default function Dashboard() {
+  const [logs, setLogs] = useState([]);
+  const [input, setInput] = useState('');
+  const [swarm, setSwarm] = useState([]);
   const [intel, setIntel] = useState(null);
-  const [isScanning, setIsScanning] = useState(false);
   const { speak } = useSovereignVoice();
 
-  const runAnalysis = async () => {
-    setIsScanning(true);
-    speak("Analyst Agent awakened. Scanning global intelligence signals.");
-    
-    // Call the Alpha Core which now routes to the Analyst
-    const res = await fetch('/api/alpha/command', { 
-        method: 'POST', 
-        body: JSON.stringify({ command: "run intelligence report" }) 
-    });
+  const fetchData = async () => {
+    const res = await fetch('/api/governance/logs');
+    if (res.ok) setLogs(await res.json());
+  };
+
+  useEffect(() => {
+    fetchData();
+    const i = setInterval(fetchData, 5000);
+    return () => clearInterval(i);
+  }, []);
+
+  const handleCommand = async (e: any) => {
+    if (e.key !== 'Enter' || !input) return;
+    const cmd = input; setInput(''); setIntel(null);
+    speak("Analyst Agent awakened. Scanning global signals.");
+
+    const res = await fetch('/api/alpha/command', { method: 'POST', body: JSON.stringify({ command: cmd }) });
     const data = await res.json();
     
-    // If the Analyst returned data, display it
-    setIntel(data.intel_report || null);
-    setIsScanning(false);
-    speak("Research finalized. Institutional report ready for review.");
+    if (data.swarm) setSwarm(data.swarm);
+    if (data.intel) {
+        setIntel(data.intel);
+        speak("Institutional report ready for review.");
+    }
+    fetchData();
   };
 
   return (
     <div style={{ background: 'black', color: 'white', minHeight: '100vh', padding: '60px', fontFamily: 'monospace' }}>
-      
-      {/* 1. HEADER */}
-      <header className="flex justify-between items-center border-b border-white/10 pb-8 mb-12">
-        <h1 className="text-2xl font-black tracking-tighter uppercase italic">AetherStack<span className="text-cyan-500">AI</span></h1>
-        <button 
-          onClick={runAnalysis}
-          disabled={isScanning}
-          className="px-6 py-2 bg-white text-black font-black rounded-full hover:bg-cyan-500 transition-all flex items-center gap-2"
-        >
-          <Search size={14} />
-          {isScanning ? "RESEARCHING..." : "ACTIVATE ANALYST"}
-        </button>
-      </header>
+      <h1 style={{ fontSize: '24px', fontWeight: '900', marginBottom: '40px' }}>AETHERSTACK<span style={{color:'#00d2ff'}}>AI</span></h1>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
-        {/* 2. INTELLIGENCE REPORT PANEL */}
-        <div className="bg-[#050505] border border-white/5 rounded-3xl p-10 backdrop-blur-3xl min-h-[400px]">
-           <div className="flex items-center gap-3 mb-8">
-              <BookOpen size={20} className="text-purple-500" />
-              <h3 className="text-[10px] font-black text-purple-500 tracking-[0.4em] uppercase">Market Intelligence Report</h3>
-           </div>
-
-           {intel ? (
-             <div className="animate-in fade-in slide-in-from-bottom-4 duration-1000">
-                <div className="mb-6 p-4 bg-purple-500/5 border border-purple-500/20 rounded-xl">
-                   <p className="text-[8px] text-purple-400 font-bold uppercase mb-1">Strategic Focus</p>
-                   <p className="text-lg font-bold text-white tracking-tight">{intel.focus}</p>
+      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '40px' }}>
+        <div>
+          {/* λ TERMINAL */}
+          <div style={{ background: '#080808', border: '1px solid #111', borderRadius: '15px', padding: '30px', marginBottom: '30px' }}>
+            <input 
+              value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={handleCommand}
+              placeholder="ISSUE ANALYTIC DIRECTIVE (e.g. > analyze market)"
+              style={{ background: 'transparent', border: 'none', outline: 'none', color: '#00d2ff', width: '100%', fontSize: '14px' }}
+            />
+            <div style={{ marginTop: '20px' }}>
+              {swarm.map((s: any, i: number) => (
+                <div key={i} style={{ fontSize: '10px', color: '#444', marginBottom: '5px' }}>
+                  <span style={{ color: '#00d2ff' }}>[{s.agent}]</span> {s.msg}
                 </div>
-                <ul className="space-y-4">
-                   {intel.findings.map((f, i) => (
-                     <li key={i} className="flex gap-4 text-xs text-zinc-400 leading-relaxed">
-                        <TrendingUp size={14} className="text-zinc-700 shrink-0" />
-                        {f}
-                     </li>
-                   ))}
-                </ul>
-             </div>
-           ) : (
-             <div className="h-64 flex items-center justify-center border border-dashed border-white/5 rounded-2xl text-zinc-800 text-[10px] uppercase tracking-widest">
-                Awaiting Analyst Pulse...
-             </div>
-           )}
+              ))}
+            </div>
+          </div>
+
+          {/* INTELLIGENCE REPORT WIDGET */}
+          {intel && (
+            <div className="animate-in slide-in-from-bottom-5 duration-700" style={{ background: 'rgba(168, 85, 247, 0.05)', border: '1px solid rgba(168, 85, 247, 0.2)', padding: '30px', borderRadius: '20px' }}>
+               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
+                  <BookOpen size={16} className="text-purple-500" />
+                  <span style={{ color: '#a855f7', fontSize: '10px', fontWeight: 'bold', letterSpacing: '2px' }}>MARKET_INTELLIGENCE_REPORT</span>
+               </div>
+               <div style={{ fontSize: '12px', fontWeight: 'bold', marginBottom: '15px' }}>FOCUS: {intel.focus_area}</div>
+               <div style={{ spaceY: '10px' }}>
+                  {intel.intelligence_signals.map((signal: string, i: number) => (
+                    <div key={i} style={{ display: 'flex', gap: '10px', fontSize: '11px', color: '#888', marginBottom: '10px' }}>
+                       <TrendingUp size={12} className="text-zinc-700" /> {signal}
+                    </div>
+                  ))}
+               </div>
+               <div style={{ marginTop: '20px', padding: '10px', background: 'rgba(0,210,255,0.05)', borderRadius: '10px', fontSize: '10px', color: '#00d2ff', fontStyle: 'italic' }}>
+                  "Recommendation: {intel.recommendation}"
+               </div>
+            </div>
+          )}
         </div>
 
-        {/* 3. TERMINAL LOGS (Same as before) */}
-        <div className="opacity-20 hover:opacity-100 transition-opacity">
-           {/* Terminal contents... */}
+        {/* LEDGER */}
+        <div>
+          <h3 style={{ color: '#222', fontSize: '10px', textTransform: 'uppercase', tracking: '0.3em', marginBottom: '20px' }}>Forensic Ledger</h3>
+          {logs.slice(0, 8).map((log: any, i: number) => (
+            <div key={i} style={{ padding: '15px', background: '#050505', borderLeft: '2px solid #00d2ff', marginBottom: '8px', opacity: i === 0 ? 1 : 0.3, display: 'flex', justifyContent: 'space-between' }}>
+              <div style={{ fontSize: '10px', color: '#00ff00' }}>{log.a}</div>
+              <div style={{ fontSize: '10px', color: '#333' }}>{log.ts?.substring(11,19)}</div>
+            </div>
+          ))}
         </div>
       </div>
     </div>
