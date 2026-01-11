@@ -10,14 +10,18 @@ export async function POST(req) {
 
   try {
     const event = stripe.webhooks.constructEvent(body, sig, process.env.STRIPE_WEBHOOK_SECRET);
+
     if (event.type === 'checkout.session.completed') {
-      const credits = (event.data.object.amount_total / 100) * 100;
+      const session = event.data.object;
+      const credits = (session.amount_total / 100) * 100;
+
       const ssh = new NodeSSH();
       await ssh.connect({
         host: process.env.VPS_IP,
         username: 'root',
         password: process.env.VPS_PASSWORD
       });
+
       await ssh.execCommand(`python3 /opt/aetherstack/scripts/economy_sync.py ${credits}`);
       ssh.dispose();
     }
