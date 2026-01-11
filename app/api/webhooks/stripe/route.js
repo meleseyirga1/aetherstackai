@@ -2,46 +2,42 @@ import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { NodeSSH } from 'node-ssh';
 
+// ALIGNED TO STRIPE VERSION: 2025-12-15.clover
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 export async function POST(req) {
   const body = await req.text();
   const sig = req.headers.get('stripe-signature');
 
-  let event;
-
   try {
-    // 1. Verify the signature comes from Stripe
-    event = stripe.webhooks.constructEvent(body, sig, process.env.STRIPE_WEBHOOK_SECRET);
-  } catch (err) {
-    console.error('⚠️ Webhook signature verification failed.', err.message);
-    return NextResponse.json({ error: 'Invalid Signature' }, { status: 400 });
-  }
+    const event = stripe.webhooks.constructEvent(
+      body, 
+      sig, 
+      process.env.STRIPE_WEBHOOK_SECRET
+    );
 
-  // 2. Handle the successful payment event
-  if (event.type === 'checkout.session.completed') {
-    const session = event.data.object;
-    const amount = session.amount_total / 100; // Total in USD
-    const credits = amount * 100; // $1 = 100 IU
+    if (event.type === 'checkout.session.completed') {
+      const session = event.data.object;
+      const credits = (session.amount_total / 100) * 100; // $1 = 100 IU
 
-    console.log(`💰 Payment detected: $${amount}. Provisioning ${credits} credits...`);
-
-    const ssh = new NodeSSH();
-    try {
-      // 3. Handshake with NYC-01 Root to update physical credits
+      const ssh = new NodeSSH();
       await ssh.connect({
         host: process.env.VPS_IP,
         username: 'root',
         password: process.env.VPS_PASSWORD
       });
 
+      // Synchronize credits to the physical VPS ledger
       await ssh.execCommand(`python3 /opt/aetherstack/scripts/economy_sync.py ${credits}`);
+      
+      // Log the event in the Supreme Truth
+      await ssh.execCommand(`python3 -c "from audit_engine import AuditEngine; AuditEngine().log_action('STRIPE_ENGINE', 'PRODUCTION_DEPOSIT', 'Verified ${credits} IU') "`);
+      
       ssh.dispose();
-      console.log('✅ Credits anchored to VPS Ledger.');
-    } catch (sshErr) {
-      console.error('❌ Failed to connect to VPS:', sshErr);
     }
+    return NextResponse.json({ received: true });
+  } catch (err) {
+    console.error('💰 STRIPE_ERROR:', err.message);
+    return NextResponse.json({ error: err.message }, { status: 400 });
   }
-
-  return NextResponse.json({ received: true });
 }
